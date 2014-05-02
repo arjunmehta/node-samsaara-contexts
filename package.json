@@ -1,0 +1,19 @@
+{
+  "name": "samsaara-contexts",
+  "version": "0.0.0",
+  "description": "node-samsaara-contexts ======================",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/arjunmehta/node-samsaara-contexts.git"
+  },
+  "author": "Arjun Mehta",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/arjunmehta/node-samsaara-contexts/issues"
+  },
+  "homepage": "https://github.com/arjunmehta/node-samsaara-contexts"
+}
