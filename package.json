@@ -1,5 +1,6 @@
 {
   "name": "samsaara-contexts",
+  "private": true,
   "version": "0.0.0",
   "description": "node-samsaara-contexts ======================",
   "main": "main.js",
