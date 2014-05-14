@@ -5,6 +5,8 @@
  */
 
 
+var debug = require('debug')('samsaara:contexts');
+
 const LOCAL_CONTEXT = 1;
 const FOREIGN_CONTEXT = 2;
 
@@ -76,7 +78,7 @@ function contextController(options){
     isContextOpen(contextID, function (open, local){
 
       if(open === true){
-         console.log(config.uuid, "CONTEXT IS OPEN");
+         debug("addToContext", config.uuid, "CONTEXT IS OPEN");
          addLocalConnectionToLocalContext(connection, contextID, callBack);
       }
       else{
@@ -116,14 +118,14 @@ function contextController(options){
   //   isContextOpen(contextID, function (open, local){
 
   //     if(open === true){
-  //        console.log(config.uuid, "CONTEXT IS OPEN");
+  //        debug(config.uuid, "CONTEXT IS OPEN");
 
   //       if(local === true){
-  //         console.log(config.uuid, "ATTEMPTING TO ADD TO LOCAL CONTEXT");
+  //         debug(config.uuid, "ATTEMPTING TO ADD TO LOCAL CONTEXT");
   //         addLocalConnectionToLocalContext(connection, contextID, callBack);
   //       }
   //       else{
-  //         console.log(config.uuid, "ATTEMPTING TO ADD TO FOREIGN CONTEXT");
+  //         debug(config.uuid, "ATTEMPTING TO ADD TO FOREIGN CONTEXT");
   //         addLocalConnectionToForeignContext(connection, contextID, callBack);
   //       }
   //     }
@@ -163,7 +165,7 @@ function contextController(options){
 
   function addLocalConnectionToForeignContext(connection, contextID, callBack){
 
-    console.log( config.uuid, moduleName, "ADDING TO FOREIGN CONTEXT", contextID, callBack);
+    debug("addLocalConnectionToForeignContext", config.uuid, moduleName, contextID, callBack);
 
     connection.contexts[contextID] = FOREIGN_CONTEXT;
 
@@ -231,7 +233,7 @@ function contextController(options){
 
   function handleContextMessage(channel, message){
 
-    console.log(config.uuid, "|||Handling Context Message", channel, message);
+    debug("Handling Context Message", config.uuid, channel, message);
 
     var index = message.indexOf("::");
     var senderInfo = message.substring(0, index);
@@ -246,7 +248,7 @@ function contextController(options){
 
     var messageObj = JSON.parse(connMessage);
 
-    console.log("Process Message", senderInfoSplit, connID, JSON.parse(connMessage));
+    debug("Process Message", senderInfoSplit, connID, JSON.parse(connMessage));
 
     communication.executeFunction({connection: connection, context: context}, messageObj);
 
@@ -259,8 +261,7 @@ function contextController(options){
     var connection = connectionController.connections[connID];
     var contextID = connection.context;
 
-    log.debug( config.uuid, moduleName, "CLEAR CONTEXT MAIN/////////", connID);
-    log.debug( config.uuid, moduleName, "CLEAR CONTEXT contexts. foreignContext:", connection.foreignContext || false, ": PrimaryContext:", connection.context || false);
+    debug("clearFromContext", config.uuid, "CLEAR CONTEXT MAIN/////////", connID);
 
     if(contextID !== null && contexts[contextID] !== undefined){
 
@@ -291,9 +292,9 @@ function contextController(options){
     if(context === undefined){
 
       if(config.interProcess === true){
-        // console.log("CHECKING REDIS STORE IF CONTEXT IS OPEN");
+        // debug("CHECKING REDIS STORE IF CONTEXT IS OPEN");
         config.redisClient.hexists("openContexts", contextID, function (err, reply) {
-          // console.log("REDIS REPLY", err, reply);
+          // debug("REDIS REPLY", err, reply);
           if(reply == "1"){
             if(typeof callBack === "function") callBack(true, false);
           }
@@ -335,7 +336,7 @@ function contextController(options){
     connection.contexts = {};
 
     if(opts.contexts !== undefined){
-      console.log("Initializing Contexts.....!!!", opts.contexts, connection.id);
+      debug("Initializing Contexts.....!!!", opts.contexts, connection.id);
       attributes.force("contexts");
       attributes.initialized(null, "contexts");
     }
@@ -371,7 +372,7 @@ function contextController(options){
 
   return function contextController(samsaaraCore){
 
-    // console.log(samsaaraCore,);
+    // debug(samsaaraCore,);
     config = samsaaraCore.config;
     connectionController = samsaaraCore.connectionController;
     communication = samsaaraCore.communication;
