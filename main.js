@@ -7,6 +7,7 @@
 
 var debug = require('debug')('samsaara:contexts');
 
+
 const LOCAL_CONTEXT = 1;
 const FOREIGN_CONTEXT = 2;
 
