@@ -9,132 +9,77 @@ var config = require('../lib/config.js');
 
 var connections = require('../lib/connectionController').connections;
 var communication = require('../lib/communication');
-var contexts = require('contexts');
-
-exports = module.exports = Context;
+var contexts;
 
 
-function Context(contextID, contextData, access){
-  this.contextID = contextID || null;
-  this.members = {};
-  this.groups = { everyone: { members:{} } };
-  this.access = access || { owner: true, read: {}, write: {}, readGroups:{}, writeGroups:{} }; // new samsaara.Access(access);
-  this.contextData = contextData || {};
+function initialize(samsaaraCore, contextsObj){
+
+  contexts = contextsObj;
+
+  if(samsaara.capability.groups === true){
+    Context.prototype.createGroup = function(groupName){
+      samsaara.createLocalGroup(this.contextID+"_"+groupName);
+      this.groups[groupName] = samsaara.groups[this.contextID+"_"+groupName];
+    };
+
+    Context.prototype.group = function(groupName){
+      return this.groups[groupName];
+    };
+  }
+
+  if(samsaara.capability.access === true){
+    Context.prototype.hasAccess = samsaara.access.hasAccess;
+  }
 }
 
-Context.prototype.addConnection = function(connID){
 
-  this.members[connID] = true;
-  this.groups.everyone.members[connID] = true;
+function Context(contextID, resource){
 
-  config.emit("clearedFromContext", connections[connID], this.contextID);
-};
+  this.contextID = this.id = contextID;
 
+  this.nameSpaces = {};
+  this.contexts = {};
 
-Context.prototype.removeConnection = function(connID){
+  this.count = 0;
+  this.members = {};
+  this.resource = resource;
 
-  var groups = this.groups;
-
-  for(var group in groups){
-    if(groups[group].members[connID] !== undefined){
-      delete groups[group].members[connID];
-    }
+  if(samsaara.capability.groups === true){
+    this.groups = {};
   }
 
-  delete this.members[connID];
+}
 
-  config.emit("clearedFromContext", connections[connID], this.contextID);
-};
-
-
-
-
-Context.prototype.assignID = function(contextID){
-  this.contextID = contextID;
-};
-
-Context.prototype.resetGroups = function(groups){
-  this.groups = { everyone: {} };
-  for(var group in groups){
-    this.groups[group] = groups[group];
+Context.prototype.add = function(connection){
+  if(!this.members[connection.id]){
+    this.count++;
+    this.members[connection.id] = true;
   }
 };
 
-Context.prototype.resetPermissions = function(permissions){
-  this.access = { owner: true, read: {}, write: {}, readGroups:{}, writeGroups:{} };
-  for(var priviledge in permissions){
-    this.access[priviledge] = permissions[priviledge];
+Context.prototype.remove = function(connection){
+  if(this.members[connection.id]){
+    this.count--;
+    delete this.members[connection.id];
   }
 };
 
-// SendToGroup, addCustomGroup, addToGroup, addAccess
-
-Context.prototype.sendToGroup = function(groupName, message, callBack){
-  var group = this.groups[groupName];
-  for(var connID in group){
-    communication.sendToClient(connID, message, callBack);
-  }
+Context.prototype.createContext = function(contextID, resource){
+  samsaara.createContext(contextID, resource);
+  this.contexts[contextID] = samsaara.contexts[contextID];
 };
 
-Context.prototype.addGroup = function(groupName){
-  if(!this.groups[groupName]){
-    this.groups[groupName] = {};
-  }
-};
-
-Context.prototype.addToGroup = function(connID, groupName){
-  if(this.groups[groupName]){
-    this.groups[groupName][connID] = true;
-  }  
-};
-
-Context.prototype.removeFromGroup = function(connID, groupName){
-  if(this.groups[groupName]){
-    delete this.groups[groupName][connID];
-  }
+Context.prototype.createNamespace = function(nameSpaceName, exposed){
+  samsaara.createNamespace(this.contextID+"_"+nameSpaceName, exposed);
+  this.nameSpaces[nameSpaceName] = samsaara.nameSpaces[this.contextID+"_"+nameSpaceName];
 };
 
 
 
-Context.prototype.addAccess = function(userName, privilege){
-  if(this.access[privilege] !== undefined){
-    this.access[privilege][userName] = true;
-  }
-};
 
-Context.prototype.authenticate = function(whichOne, forWhat, includeGroups){
-  if(this.access[forWhat][whichOne.sessionInfo.userID] !== undefined){
-    return true;
-  }
-  else if(includeGroups === true){
-    var forWhatGroups = this.access[forWhat + "Groups"];
-    var userGroups = whichOne.groups;
-    for(var i = 0; i< userGroups.length; i++){
-      if(forWhatGroups[userGroups[i]] !== undefined){
-        return true;
-      }
-    }
-    return false;
-  }
-  else{
-    return false;
-  }
-};
 
-Context.prototype.hasReadAccess = function(whichOne){
-  return this.authenticate(whichOne, "read");
-};
 
-Context.prototype.hasWriteAccess = function(whichOne){
-  return this.authenticate(whichOne, "write");
+module.exports = exports = {
+  initialize: initialize,
+  Context: Context
 };
-
-Context.prototype.isOwner = function(whichOne){
-  if(this.access.owner === whichOne.sessionInfo.userID){
-    return true;
-  }
-  else{
-    return true;
-  }  
-};
-

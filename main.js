@@ -25,6 +25,13 @@ function contextController(options){
 
 
 
+  function createContext(contextID, resource){
+
+  }
+
+
+
+
   function openContextWithData(contextID, contextData, options, callBack){
     if(typeof options === "function" && callBack === undefined){
       callBack = options;
@@ -98,7 +105,7 @@ function contextController(options){
 
   {connection: connection, context: context}
 
-  samsaara.sendToClient(this.connection.id, "hi");
+  this.connection.execute("hi");
 
   var connection = this.connection;
   var context = this.context;
@@ -202,9 +209,9 @@ function contextController(options){
   Routing Methods including IPC handling
   */
 
-  function preRouteFilter(connection, owner, messageAttributes, newPrepend, message, next){
+  function preRouteFilter(connection, owner, headerAttributes, newHeader, message, next){
 
-    var index = messageAttributes.indexOf("CTX");
+    var index = headerAttributes.indexOf("CTX");
 
     if(index !== -1){
       if(contexts[contextID] !== undefined){
@@ -216,13 +223,13 @@ function contextController(options){
 
 
 
-  function preRouteFilterIPC(connection, owner, messageAttributes, newPrepend, message, next){
+  function preRouteFilterIPC(connection, owner, headerAttributes, newHeader, message, next){
 
-    var index = messageAttributes.indexOf("CTX");
+    var index = headerAttributes.indexOf("CTX");
 
     if(index !== -1){
       if(contexts[contextID] === undefined){        
-        publish("CTX:"+messageAttributes[index+1]+":MSG", "FRM:"+connection.id+":CTX:"+messageAttributes[index+1]+"::"+message);
+        publish("CTX:"+headerAttributes[index+1]+":MSG", "FRM:"+connection.id+":CTX:"+headerAttributes[index+1]+"::"+message);
       }
       else{
         communication.executeFunction({connection: connection, context: contexts[contextID]}, messageObj);
@@ -377,7 +384,7 @@ function contextController(options){
     config = samsaaraCore.config;
     connectionController = samsaaraCore.connectionController;
     communication = samsaaraCore.communication;
-    ipc = samsaaraCore.ipcRedis;
+    ipc = samsaaraCore.ipc;
 
 
 
@@ -405,7 +412,12 @@ function contextController(options){
 
       connectionClose: {
         contexts: connectionClosing
+      },
+
+      constructors: {
+        Context: Context
       }
+
     };
 
     if(config.interProcess === true){
