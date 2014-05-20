@@ -384,9 +384,7 @@ function contextController(options){
     config = samsaaraCore.config;
     connectionController = samsaaraCore.connectionController;
     communication = samsaaraCore.communication;
-    ipc = samsaaraCore.ipc;
-
-
+    ipc = samsaaraCore.ipc;    
 
     var exported = {
 
