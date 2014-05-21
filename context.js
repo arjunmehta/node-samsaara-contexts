@@ -5,18 +5,23 @@
  */
 
 
-var config = require('../lib/config.js');
 
-var connections = require('../lib/connectionController').connections;
-var communication = require('../lib/communication');
+var core, 
+    samsaara;
+
 var contexts;
+
 
 
 function initialize(samsaaraCore, contextsObj){
 
+  core = samsaaraCore;
+  samsaara = samsaaraCore.samsaara;
+
   contexts = contextsObj;
 
-  if(samsaara.capability.groups === true){
+  if(samsaaraCore.capability.groups === true){
+
     Context.prototype.createGroup = function(groupName){
       samsaara.createLocalGroup(this.contextID+"_"+groupName);
       this.groups[groupName] = samsaara.groups[this.contextID+"_"+groupName];
@@ -27,34 +32,49 @@ function initialize(samsaaraCore, contextsObj){
     };
   }
 
-  if(samsaara.capability.access === true){
-    Context.prototype.hasAccess = samsaara.access.hasAccess;
+  if(samsaaraCore.capability.access === true){    
+    Context.prototype.hasAccess = samsaaraCore.access.hasAccess;
   }
+
+  return Context;
+
 }
 
 
-function Context(contextID, resource){
+function Context(contextID, resource, parentContextID){
 
-  this.contextID = this.id = contextID;
+  this.id = core.uuid + contextID;
+  this.contextID = contextID;
+
+  this.owner = core.uuid;
+  this.parentContextID = parentContextID || "root" ;
+
+  this.resource = resource;
 
   this.nameSpaces = {};
   this.contexts = {};
 
   this.count = 0;
-  this.members = {};
-  this.resource = resource;
+  this.members = {};  
 
-  if(samsaara.capability.groups === true){
+  if(core.capability.groups === true){
     this.groups = {};
   }
 
 }
 
-Context.prototype.add = function(connection){
+
+Context.prototype.isLocal = function(){
+  return true;
+};
+
+Context.prototype.add = function(connection, callBack){
   if(!this.members[connection.id]){
     this.count++;
     this.members[connection.id] = true;
   }
+
+  if(typeof callBack === "function") callBack(null, this.id);
 };
 
 Context.prototype.remove = function(connection){
@@ -62,19 +82,33 @@ Context.prototype.remove = function(connection){
     this.count--;
     delete this.members[connection.id];
   }
+
+  return this;
 };
 
 Context.prototype.createContext = function(contextID, resource){
-  samsaara.createContext(contextID, resource);
-  this.contexts[contextID] = samsaara.contexts[contextID];
+  var context = samsaara.createContext(this.contextID+"_"+contextID, resource, this.id);
+  this.contexts[this.contextID+"_"+contextID] = context;
+
+  return context;
 };
 
 Context.prototype.createNamespace = function(nameSpaceName, exposed){
-  samsaara.createNamespace(this.contextID+"_"+nameSpaceName, exposed);
-  this.nameSpaces[nameSpaceName] = samsaara.nameSpaces[this.contextID+"_"+nameSpaceName];
+  var ns = samsaara.createNamespace(this.contextID+"_"+nameSpaceName, exposed);
+  this.nameSpaces[nameSpaceName] = ns;
+
+  return ns;
 };
 
 
+Context.prototype.nameSpace = function(nameSpaceName){  
+  return this.nameSpaces[nameSpaceName];
+};
+
+
+Context.prototype.context = function(contextID){
+  return this.contexts[contextID];
+};
 
 
 

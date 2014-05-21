@@ -12,6 +12,8 @@ const LOCAL_CONTEXT = 1;
 const FOREIGN_CONTEXT = 2;
 
 
+
+
 function contextController(options){
 
   var samsaaraCore,
@@ -20,14 +22,27 @@ function contextController(options){
       communication,
       ipc;
 
-  var contexts = require('contexts');
-  var Context = require('context');
+  var contexts = {};
+  var Context;
 
 
 
-  function createContext(contextID, resource){
+  function createContext(contextID, resource, parentContext){
+    if(!contexts[contextID]){
+      contexts[contextID] = new Context(contextID, resource, parentContext);
+    }
+    else{
+      contexts[contextID].updateContext();
+    }
+
+    return contexts[contextID];
+  }
+
+  function context(){
 
   }
+
+
 
 
 
@@ -45,7 +60,7 @@ function contextController(options){
         if(config.interProcess === true){
 
           contexts[contextID] = new Context(contextID, contextData, options.access);
-          ipc.store.hset("openContexts", contextID, config.uuid);
+          ipc.store.hset("openContexts", contextID, core.uuid);
           ipc.addRoute("contextMessage", "CTX:" + contextID, handleContextMessage);
           samsaaraCore.emit("openedContext", contexts[contextID]);
         }
@@ -86,7 +101,7 @@ function contextController(options){
     isContextOpen(contextID, function (open, local){
 
       if(open === true){
-         debug("addToContext", config.uuid, "CONTEXT IS OPEN");
+         debug("addToContext", core.uuid, "CONTEXT IS OPEN");
          addLocalConnectionToLocalContext(connection, contextID, callBack);
       }
       else{
@@ -126,14 +141,14 @@ function contextController(options){
   //   isContextOpen(contextID, function (open, local){
 
   //     if(open === true){
-  //        debug(config.uuid, "CONTEXT IS OPEN");
+  //        debug(core.uuid, "CONTEXT IS OPEN");
 
   //       if(local === true){
-  //         debug(config.uuid, "ATTEMPTING TO ADD TO LOCAL CONTEXT");
+  //         debug(core.uuid, "ATTEMPTING TO ADD TO LOCAL CONTEXT");
   //         addLocalConnectionToLocalContext(connection, contextID, callBack);
   //       }
   //       else{
-  //         debug(config.uuid, "ATTEMPTING TO ADD TO FOREIGN CONTEXT");
+  //         debug(core.uuid, "ATTEMPTING TO ADD TO FOREIGN CONTEXT");
   //         addLocalConnectionToForeignContext(connection, contextID, callBack);
   //       }
   //     }
@@ -157,7 +172,7 @@ function contextController(options){
     contexts[contextID].members[connection.id] = LOCAL_CONTEXT;
 
     if(typeof callBack === "function") callBack(null, contextID);
-    config.emit("addedToContext", connection, contexts[contextID]);
+    samsaara.emit("addedToContext", connection, contexts[contextID]);
   }
 
   function addForeignConnectionToLocalContext(connection, contextID, callBack){
@@ -166,19 +181,19 @@ function contextController(options){
     contexts[contextID].members[connection.id] = FOREIGN_CONTEXT;
 
     if(typeof callBack === "function") callBack(null, contextID);
-    config.emit("addedToContext", connection, contexts[contextID]);    
+    samsaara.emit("addedToContext", connection, contexts[contextID]);    
   }
 
 
 
   function addLocalConnectionToForeignContext(connection, contextID, callBack){
 
-    debug("addLocalConnectionToForeignContext", config.uuid, moduleName, contextID, callBack);
+    debug("addLocalConnectionToForeignContext", core.uuid, moduleName, contextID, callBack);
 
     connection.contexts[contextID] = FOREIGN_CONTEXT;
 
     var symbolic = {
-      owner: config.uuid,
+      owner: core.uuid,
       nativeID: connection.id,
       connectionData: connection.connectionData
     };
@@ -241,7 +256,7 @@ function contextController(options){
 
   function handleContextMessage(channel, message){
 
-    debug("Handling Context Message", config.uuid, channel, message);
+    debug("Handling Context Message", core.uuid, channel, message);
 
     var index = message.indexOf("::");
     var senderInfo = message.substring(0, index);
@@ -269,7 +284,7 @@ function contextController(options){
     var connection = connectionController.connections[connID];
     var contextID = connection.context;
 
-    debug("clearFromContext", config.uuid, "CLEAR CONTEXT MAIN/////////", connID);
+    debug("clearFromContext", core.uuid, "CLEAR CONTEXT MAIN/////////", connID);
 
     if(contextID !== null && contexts[contextID] !== undefined){
 
@@ -280,7 +295,7 @@ function contextController(options){
         removeFromMap(connID, contextGroups[group]);
       }
 
-      config.emit("removedFromContext", connection, contextID);
+      samsaara.emit("removedFromContext", connection, contextID);
     }
 
     connection.context = null;
@@ -353,21 +368,15 @@ function contextController(options){
 
   function connectionClosing(connection){
     var connID = connection.id;
+    var connContexts = connection.contexts;
 
-    for(var context in connection.contexts){
-      contexts[connection.contexts[context]].removeConnection(connID);
+    for(var context in connContexts){
+      contexts[connContexts[context]].remove(connID);
 
-      if(contexts[connection.contexts[i]].members[connID] !== undefined){
-        delete contexts[connection.contexts[i]].members[connID];
+      if(contexts[connContexts[i]].members[connID] !== undefined){
+        delete contexts[connContexts[i]].members[connID];
       }
     }
-
-
-
-  // if(connContext !== null && contexts[connContext] !== undefined){
-  //   contexts[connContext].removeConnection(connID);
-  // }
-
   }
 
 
@@ -380,11 +389,11 @@ function contextController(options){
 
   return function contextController(samsaaraCore){
 
-    // debug(samsaaraCore,);
-    config = samsaaraCore.config;
     connectionController = samsaaraCore.connectionController;
     communication = samsaaraCore.communication;
     ipc = samsaaraCore.ipc;    
+
+    Context = require('./context').initialize(samsaaraCore, contexts);
 
     var exported = {
 
