@@ -32,10 +32,6 @@ function initialize(samsaaraCore, contextsObj){
     };
   }
 
-  if(samsaaraCore.capability.access === true){    
-    Context.prototype.hasAccess = samsaaraCore.access.hasAccess;
-  }
-
   return Context;
 
 }
@@ -64,9 +60,12 @@ function Context(contextID, resource, parentContextID){
 }
 
 
+Context.prototype.local = true;
+
 Context.prototype.isLocal = function(){
-  return true;
+  return this.local;
 };
+
 
 Context.prototype.add = function(connection, callBack){
   if(!this.members[connection.id]){
@@ -86,12 +85,24 @@ Context.prototype.remove = function(connection){
   return this;
 };
 
+
 Context.prototype.createContext = function(contextID, resource){
-  var context = samsaara.createContext(this.contextID+"_"+contextID, resource, this.id);
-  this.contexts[this.contextID+"_"+contextID] = context;
+
+  var context = samsaara.createContext(contextID, resource, this.id);
+  this.contexts[contextID] = context;
+
+  if(interProcess === true){
+    ipc.publish("CTX:NEW", contextID+":"+core.uuid);
+  }
 
   return context;
 };
+
+Context.prototype.removeContext = function(contextID){
+  this.contexts[contextID] = undefined;
+  samsaara.removeContext(contextID);
+};
+
 
 Context.prototype.createNamespace = function(nameSpaceName, exposed){
   var ns = samsaara.createNamespace(this.contextID+"_"+nameSpaceName, exposed);

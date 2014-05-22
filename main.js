@@ -16,207 +16,44 @@ const FOREIGN_CONTEXT = 2;
 
 function contextController(options){
 
-  var samsaaraCore,
+  var core,
       config,
-      connectionController, connections,
+      connectionController,      
       communication,
       ipc;
+
+  var connections;
+
+  var interProcess;
 
   var contexts = {};
   var Context;
 
 
+  samsaara.nameSpace("interprocess").expose({addToContext: addToContext});
+
 
   function createContext(contextID, resource, parentContext){
-    if(!contexts[contextID]){
+    if(contexts[contextID] === undefined){
       contexts[contextID] = new Context(contextID, resource, parentContext);
-    }
-    else{
-      contexts[contextID].updateContext();
+      if(interProcess === true){
+        ipc.publish("CTX:NEW", contextID+":"+core.uuid);
+      }
     }
 
     return contexts[contextID];
   }
 
-  function context(){
-
-  }
-
-
-
-
-
-
-  function openContextWithData(contextID, contextData, options, callBack){
-    if(typeof options === "function" && callBack === undefined){
-      callBack = options;
-      options = {};
+  function removeContext(contextID){
+    contexts[contextID] = undefined;
+    if(interProcess === true){
+      ipc.publish("CTX:DEL", contextID+":"+core.uuid);
     }
-
-    isContextOpen(contextID, function (open, local){
-
-      if(open === false){
-
-        if(config.interProcess === true){
-
-          contexts[contextID] = new Context(contextID, contextData, options.access);
-          ipc.store.hset("openContexts", contextID, core.uuid);
-          ipc.addRoute("contextMessage", "CTX:" + contextID, handleContextMessage);
-          samsaaraCore.emit("openedContext", contexts[contextID]);
-        }
-        else{
-          contexts[contextID] = new Context(contextID, contextData, options.access);
-          samsaaraCore.emit("openedContext", contexts[contextID]);
-        }
-
-        if(typeof callBack === "function") callBack(null, contextID, contexts[contextID]);
-
-      }
-      else{
-        if(typeof callBack === "function") callBack(new Error(contextID + " already open"), contextID, null);
-      }
-
-    });
-  }
-
-  function openContext(contextID, callBack){
-    openContextWithData(contextID, {}, callBack);
   }
 
 
-  // switch context doesn't exist anymore
-
-  // addToContext
-  // leaveContext
-
-  // CTX:938ksjh:ADD
-
-
-
-  function addToContext(connection, contextID, callBack){
-
-    var connectionOwner = connection.owner;
-    var context = contexts[contextID];
-
-    isContextOpen(contextID, function (open, local){
-
-      if(open === true){
-         debug("addToContext", core.uuid, "CONTEXT IS OPEN");
-         addLocalConnectionToLocalContext(connection, contextID, callBack);
-      }
-      else{
-        if(typeof callBack === "function") callBack(new Error("Context Not Open"), null);
-      }
-
-    });
-
-  }
-
-
-/*
-
-  project.expose(exported);
-  What is "this" while executing context methods? Should it be the context? Or the connection?
-
-  {connection: connection, context: context}
-
-  this.connection.execute("hi");
-
-  var connection = this.connection;
-  var context = this.context;
-  var project = this.context.contextData;
-
-  this.context.group("clients").do("functionName").withArgs(array, [anotherarray, annother], function(){
-    
-  });
-
-
-*/
-
-  // function addToContextIPC(connection, contextID, callBack){
-
-  //   var connectionOwner = connection.owner;
-  //   var context = contexts[contextID];
-
-  //   isContextOpen(contextID, function (open, local){
-
-  //     if(open === true){
-  //        debug(core.uuid, "CONTEXT IS OPEN");
-
-  //       if(local === true){
-  //         debug(core.uuid, "ATTEMPTING TO ADD TO LOCAL CONTEXT");
-  //         addLocalConnectionToLocalContext(connection, contextID, callBack);
-  //       }
-  //       else{
-  //         debug(core.uuid, "ATTEMPTING TO ADD TO FOREIGN CONTEXT");
-  //         addLocalConnectionToForeignContext(connection, contextID, callBack);
-  //       }
-  //     }
-  //     else{
-  //       if(typeof callBack === "function") callBack(new Error("Context Not Open"), false);
-  //     }
-
-  //   });
-
-  // }
-
-
-
-  function leaveContext(contextID){
-    // CTX:28uhwijhe:LV
-  }
-
-  function addLocalConnectionToLocalContext(connection, contextID, callBack){
-
-    connection.contexts[contextID] = LOCAL_CONTEXT;
-    contexts[contextID].members[connection.id] = LOCAL_CONTEXT;
-
-    if(typeof callBack === "function") callBack(null, contextID);
-    samsaara.emit("addedToContext", connection, contexts[contextID]);
-  }
-
-  function addForeignConnectionToLocalContext(connection, contextID, callBack){
-
-    connection.contexts[contextID] = LOCAL_CONTEXT;
-    contexts[contextID].members[connection.id] = FOREIGN_CONTEXT;
-
-    if(typeof callBack === "function") callBack(null, contextID);
-    samsaara.emit("addedToContext", connection, contexts[contextID]);    
-  }
-
-
-
-  function addLocalConnectionToForeignContext(connection, contextID, callBack){
-
-    debug("addLocalConnectionToForeignContext", core.uuid, moduleName, contextID, callBack);
-
-    connection.contexts[contextID] = FOREIGN_CONTEXT;
-
-    var symbolic = {
-      owner: core.uuid,
-      nativeID: connection.id,
-      connectionData: connection.connectionData
-    };
-
-    sendToForeignContext(contextID, symbolic, callBack);
-    // this is so specific. This should be a much more general method/set of messages. createSymbolicOn(),
-  }
-
-
-
-
-
-  function sendToForeignContext(contextID, symbolic, callBack){
-    ipc.publish("CTX:"+contextID+":NEW", symbolic);
-  }
-
-  function handleContextNewSymbolic(channel, symbolic){
-
-    var symbolicData = JSON.parse(symbolic);
-    var connection = connections[symbolicData.nativeID] = new Symbolic(symbolicData);
-
-    communication.executeFunction({connection: connection, context: context}, messageObj);
-
+  function context(contextID){
+    return contexts[contextID];
   }
 
 

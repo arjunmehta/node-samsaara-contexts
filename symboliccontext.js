@@ -9,6 +9,7 @@
 var core;
 var samsaara;
 
+
 var contexts;
 
 
@@ -27,27 +28,21 @@ function initialize(samsaaraCore, contextsObj){
 
 }
 
-
-function SymbolicContext(contextID, parentContextID, owner){
-  this.id = core.uuid + contextID;
+function SymbolicContext(contextID, owner){
+  this.id = contextID;
   this.contextID = contextID;
   this.owner = owner; 
-  this.parentContextID = parentContextID || "root" ;
 }
 
-// client side.
-
+SymbolicContext.prototype.local = false;
 
 SymbolicContext.prototype.isLocal = function(){
-  return false;
+  return this.local;
 };
 
 SymbolicContext.prototype.add = function(connection, callBack){
-  if(connection.symbolic[this.owner])
-  ipc.publish("CTX:"+this.id, "ADD::"+connection.id);
+  core.process(this.owner).execute("addToContext", this.id, connection.id, callBack);
 };
-
-
 
 module.exports = exports = {
   initialize: initialize,
@@ -55,7 +50,7 @@ module.exports = exports = {
 };
 
 
-// 
-context(contextID).add(function(err, contextProcessUuid){
-
-});
+// client side
+// context(contextID).add(function (err, contextProcessUuid){
+//
+// });
