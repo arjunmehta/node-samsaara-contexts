@@ -11,14 +11,16 @@ var samsaara;
 
 
 var contexts;
+var contextController;
 
 
-function initialize(samsaaraCore, contextsObj){
+function initialize(samsaaraCore, contextsObj, contextControllerObj){
 
   core = samsaaraCore;
   samsaara = samsaaraCore.samsaara;
 
   contexts = contextsObj;
+  contextController = contextControllerObj;
 
   if(samsaaraCore.capability.access === true){
     SymbolicContext.prototype.hasAccess = samsaaraCore.access.hasAccess;
@@ -30,18 +32,18 @@ function initialize(samsaaraCore, contextsObj){
 
 function SymbolicContext(contextID, owner){
   this.id = contextID;
-  this.contextID = contextID;
-  this.owner = owner; 
+  this.owner = owner;
 }
 
 SymbolicContext.prototype.local = false;
 
-SymbolicContext.prototype.isLocal = function(){
-  return this.local;
-};
 
 SymbolicContext.prototype.add = function(connection, callBack){
   core.process(this.owner).execute("addToContext", this.id, connection.id, callBack);
+};
+
+SymbolicContext.prototype.remove = function(connection, callBack){
+  core.process(this.owner).execute("removeFromContext", this.id, connection.id, callBack);
 };
 
 module.exports = exports = {

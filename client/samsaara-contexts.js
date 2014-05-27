@@ -4,42 +4,6 @@
  * MIT Licensed
  */
 
-var contexts = (function(module){
-
-
-
-
-  module.internalMethods = {
-
-    getGeoPosition: function(callBack){
-
-      if(navigator.geolocation){
-        navigator.geolocation.getCurrentPosition(function (position){
-          samsaara.geoposition = position;
-          if(typeof callBack === "function") callBack(null, position);
-        }, function (err){
-          if(typeof callBack === "function") callBack(err, null);
-        });
-      }      
-    }
-  };
-
-  module.initializationMethods = {};
-  module.closeMethods = {};
-
-  module.main = {
-    context: function context(contextID){
-
-    }
-  };
-
-  return module;
-
-}(this.contexts = this.contexts || {}));
-
-samsaara.use(contexts);
-
-
 
 var samaaraContexts = function(options){
 
@@ -51,56 +15,17 @@ var samaaraContexts = function(options){
 
   var contexts = {};
 
+
+  // exposed
+
   function context(contextID){
     return contexts[contextID];
   }
 
-  function Context(contextID, ownerID){
-    this.id = this.contextID = contextID;
-    this.owner = ownerID;
-  }
-
-  function ContextNameSpace(){
-
-  }
-
-  
-
-  Context.prototype.nameSpace = function(nameSpaceName){
-    return new ContextNameSpace(nameSpaceName, this.id);
-  };
-
-  Context.prototype.execute = function(){
-
-    var context = this;
-    var packet = {context: this.id, func: arguments[0], args: []};
-
-    for (var i = 1; i < arguments.length-1; i++){
-      packet.args.push(arguments[i]);
-    }
-
-    if(typeof arguments[arguments.length-1] === "function"){
-      core.makeCallBack(0, packet, arguments[arguments.length-1], function (incomingCallBack, packetReady){
-        samsaara.sendRawWithHeaders( this.owner, {}, packetReady );
-      });
-    }
-    else{
-      packet.args.push(arguments[arguments.length-1]);
-      samsaara.sendRawWithHeaders( this.owner, {}, JSON.stringify(packetJSON) );
-    }
-    
-  };
-
-
-  function createContext(successContextID, contextOwner){
-    contexts[successContextID] = new Context(successContextID, contextOwner);
-  }
-
-
   function joinContext(contextID, callBack){
-    samsaara.execute("addToContext", function(err, successContextID, contextOwner){
+    samsaara.nameSpace('samsaaraContextController').execute("addToContext", function(err, successContextID, contextOwner){
       if(err){
-        contextDebug("Add to Context Error:", err);
+        contextDebug(new Error("Add to Context Error:", err));
       }
       else{
         createContext(successContextID, contextOwner);
@@ -111,14 +36,48 @@ var samaaraContexts = function(options){
   }
 
 
+  // private
+
+  function createContext(successContextID, contextOwner){
+    contexts[successContextID] = new Context(successContextID, contextOwner);
+  }
 
 
-  return function authentication(samsaaraCore, samsaaraAttributes){
+  function Context(contextID, ownerID){
+    this.id = this.contextID = contextID;
+    this.owner = ownerID;
+  }
 
-    samsaara = samsaaraCore;
+  Context.prototype.nameSpace = function(nameSpaceName){
+
+    var context = this;
+
+    return {
+      execute: function execute(){
+        var packet = {context: context.id, ns: nameSpaceName, func: arguments[0], args: []};
+        packet = core.processPacket(packet, arguments);
+        core.send( packet, core.samsaaraOwner ); // should owner be "CTX" and work like routing works on client??? YES.
+      }
+    };
+  };
+
+  Context.prototype.execute = function(){
+
+    var packet = {context: this.id, func: arguments[0], args: []};
+    packet = core.processPacket(packet, arguments);    
+    core.send( packet, core.samsaaraOwner );    
+  };
+
+  Context.prototype.leave = function(callBack){
+    samsaara.nameSpace('samsaaraContextController').execute("leaveContext", callBack);
+  };
+
+
+  return function contexts(samsaaraCore, samsaaraAttributes){
+
+    samsaara = samsaaraCore.samsaara;
     attributes = samsaaraAttributes;
 
-    attributes.force("initToken");
 
     var exported = {
       
@@ -131,9 +90,7 @@ var samaaraContexts = function(options){
       messageRoutes: {
         initToken: initToken
       },
-      messageHeaders: {
-        TKN: samsaaraToken
-      }
+
     };
 
     return exported;
@@ -141,4 +98,5 @@ var samaaraContexts = function(options){
   };
 };
 
-samsaara.use(samaaraAuthentication());
+samsaara.use(samaaraContexts());
+

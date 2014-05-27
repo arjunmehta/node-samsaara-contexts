@@ -6,19 +6,25 @@
 
 
 
+// hold the samsaaraCore and samsaara objects
+
 var core, 
     samsaara;
 
+
+// the list of all other contexts on this process
+
 var contexts;
+var contextController;
 
 
-
-function initialize(samsaaraCore, contextsObj){
+function initialize(samsaaraCore, contextsObj, contextControllerObj){
 
   core = samsaaraCore;
   samsaara = samsaaraCore.samsaara;
 
   contexts = contextsObj;
+  contextController = contextControllerObj;
 
   if(samsaaraCore.capability.groups === true){
 
@@ -33,7 +39,6 @@ function initialize(samsaaraCore, contextsObj){
   }
 
   return Context;
-
 }
 
 
@@ -56,35 +61,30 @@ function Context(contextID, resource, parentContextID){
   if(core.capability.groups === true){
     this.groups = {};
   }
-
 }
 
 
+// returns whether or not the context is local on this process or not (opposed to symboliccontext.js)
+
 Context.prototype.local = true;
 
-Context.prototype.isLocal = function(){
-  return this.local;
-};
 
+// add and remove connections
+// might need to think about foreign connections a tad... you think?
 
 Context.prototype.add = function(connection, callBack){
-  if(!this.members[connection.id]){
-    this.count++;
-    this.members[connection.id] = true;
-  }
-
-  if(typeof callBack === "function") callBack(null, this.id);
+  // connection.contexts[this.id] = core.uuid;
+  contextController.addToContext(this.id, connection.id, callBack);
 };
 
-Context.prototype.remove = function(connection){
-  if(this.members[connection.id]){
-    this.count--;
-    delete this.members[connection.id];
-  }
 
-  return this;
+Context.prototype.remove = function(connection, callBack){
+  // connection.contexts[this.id] = undefined;
+  contextController.removeFromContext(this.id, connection.id, callBack);
 };
 
+
+// creates a context locally
 
 Context.prototype.createContext = function(contextID, resource){
 
@@ -98,11 +98,16 @@ Context.prototype.createContext = function(contextID, resource){
   return context;
 };
 
+
+// removes this context
+
 Context.prototype.removeContext = function(contextID){
   this.contexts[contextID] = undefined;
   samsaara.removeContext(contextID);
 };
 
+
+// creates a namespace on the context that holds methods accessible to clients in the context
 
 Context.prototype.createNamespace = function(nameSpaceName, exposed){
   var ns = samsaara.createNamespace(this.contextID+"_"+nameSpaceName, exposed);
@@ -112,10 +117,14 @@ Context.prototype.createNamespace = function(nameSpaceName, exposed){
 };
 
 
+// gets a local context namespace, which can be used to expose new methods on.
+
 Context.prototype.nameSpace = function(nameSpaceName){  
   return this.nameSpaces[nameSpaceName];
 };
 
+
+// gets a local subcontext from this context
 
 Context.prototype.context = function(contextID){
   return this.contexts[contextID];
