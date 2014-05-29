@@ -40,11 +40,19 @@ function contextController(options){
 
     // is context already open?
 
+    debug("Creating Context", core.uuid, contextID, resource, parentContext);
+
     if(contexts[contextID] === undefined){
+
       contexts[contextID] = new Context(contextID, resource, parentContext);
+
       if(interProcess === true){
-        ipc.publish("CTX:NEW", contextID+":"+core.uuid);
+        ipc.addRoute("CTX:"+contextID, "CTX:"+contextID, handleContextMessage);
+        ipc.store.hset("samsaara:contextOwners", contextID, core.uuid, function (err, reply){ });  
       }
+
+      samsaara.emit("createdContext", contexts[contextID]);
+
       return contexts[contextID];
     }
     else{
@@ -206,33 +214,29 @@ function contextController(options){
   // Routing Methods including IPC handling
   //
 
-  function preRouteFilter(connection, owner, headerAttributes, newHeader, message, next){
+  function route(connection, owner, headerbits, message, index){
 
-    var index = headerAttributes.indexOf("CTX");
+    var contextID = headerbits.indexOf(index+1);
 
-    if(index !== -1){
-      if(contexts[contextID] !== undefined){
-        communication.executeFunction({connection: connection, context: contexts[contextID]}, messageObj);
-      }
+    if(contextID !== undefined && contexts[contextID] !== undefined){
+      communication.executeFunction({connection: connection, context: contexts[contextID]}, messageObj);
     }
-    else next();
   }
 
 
 
-  function preRouteFilterIPC(connection, owner, headerAttributes, newHeader, message, next){
+  function routeIPC(connection, owner, headerbits, message, index){
 
-    var index = headerAttributes.indexOf("CTX");
+    var contextID = headerbits.indexOf(index+1);
 
-    if(index !== -1){
+    if(contextID !== undefined){
       if(contexts[contextID] === undefined){
-        publish("CTX:"+headerAttributes[index+1]+":MSG", "FRM:"+connection.id+":CTX:"+headerAttributes[index+1]+"::"+message);
+        publish("CTX:"+contextID, "FRM:"+connection.id+"::"+message);
       }
       else{
         communication.executeFunction({connection: connection, context: contexts[contextID]}, messageObj);
       }
     }
-    else next();
   }
 
 
@@ -253,76 +257,14 @@ function contextController(options){
     var context = contexts[contextID];
 
     var messageObj = JSON.parse(connMessage);
+    if(messageObj.ns){
+      messageObj.ns = contextID + "_" + messageObj.ns;
+    }
 
     debug("Process Message", senderInfoSplit, connID, JSON.parse(connMessage));
 
     communication.executeFunction({connection: connection, context: context}, messageObj);
   }
-
-
-
-  function clearFromContext(connID, callBack){
-
-    var connection = connectionController.connections[connID];
-    var contextID = connection.context;
-
-    debug("clearFromContext", core.uuid, "CLEAR CONTEXT MAIN/////////", connID);
-
-    if(contextID !== null && contexts[contextID] !== undefined){
-
-      var context = contexts[contextID];
-      var contextGroups = context.groups;
-
-      for(var group in contextGroups){
-        removeFromMap(connID, contextGroups[group]);
-      }
-
-      samsaara.emit("removedFromContext", connection, contextID);
-    }
-
-    connection.context = null;
-    connection.foreignContext = null;
-
-    if(typeof callBack === "function") callBack(connID);
-
-  }
-
-
-
-
-  function isContextOpen(contextID, callBack){
-
-    var context = contexts[contextID];
-
-    if(context === undefined){
-
-      if(config.interProcess === true){
-        // debug("CHECKING REDIS STORE IF CONTEXT IS OPEN");
-        config.redisClient.hexists("openContexts", contextID, function (err, reply) {
-          // debug("REDIS REPLY", err, reply);
-          if(reply == "1"){
-            if(typeof callBack === "function") callBack(true, false);
-          }
-          else{
-            if(typeof callBack === "function") callBack(false, false);
-          }
-        });
-      }
-      else{
-         if(typeof callBack === "function") callBack(false, false);
-      }
-    }
-    else{
-      if(typeof callBack === "function") callBack(true, true);
-    }
-  }
-
-
-  function linkContext(contextID, toLinkTo, callBack){
-    contexts[contextID] = toLinkTo;
-    if(typeof callBack === "function") callBack(toLinkTo);
-  }
-
 
 
 
@@ -393,6 +335,7 @@ function contextController(options){
 
   return function contextController(samsaaraCore){
 
+    core = samsaaraCore;
     samsaara = samsaaraCore.samsaara;
     connectionController = samsaaraCore.connectionController;
     communication = samsaaraCore.communication;
@@ -414,7 +357,7 @@ function contextController(options){
 
       name: "contexts",
 
-      foundationMethods: {
+      main: {
         context: context,
         createContext: createContext,        
         addToContext: addToContext,
@@ -423,6 +366,10 @@ function contextController(options){
       },
 
       remoteMethods: {
+      },
+
+      messageRoutes: {
+        CTX: route
       },
 
       connectionInitialization: {
@@ -440,10 +387,12 @@ function contextController(options){
     };
 
     if(interProcess === true){
-      exported.foundationMethods.context = contextIPC;
-      exported.foundationMethods.removeContext = removeContextIPC;
-      exported.foundationMethods.addToContext = addToContextIPC;
-      exported.foundationMethods.removeFromContext = removeFromContextIPC;
+      exported.main.context = contextIPC;
+      exported.main.removeContext = removeContextIPC;
+      exported.main.addToContext = addToContextIPC;
+      exported.main.removeFromContext = removeFromContextIPC;
+
+      exported.messageRoutes.CTX = routeIPC;
     }
 
     return exported;

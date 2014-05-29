@@ -44,8 +44,7 @@ function initialize(samsaaraCore, contextsObj, contextControllerObj){
 
 function Context(contextID, resource, parentContextID){
 
-  this.id = core.uuid + contextID;
-  this.contextID = contextID;
+  this.id = contextID;
 
   this.owner = core.uuid;
   this.parentContextID = parentContextID || "root" ;
@@ -53,6 +52,7 @@ function Context(contextID, resource, parentContextID){
   this.resource = resource;
 
   this.nameSpaces = {};
+  this.nameSpaces.core = samsaara.createNamespace(contextID+"_core");
   this.contexts = {};
 
   this.count = 0;
@@ -114,6 +114,10 @@ Context.prototype.createNamespace = function(nameSpaceName, exposed){
   this.nameSpaces[nameSpaceName] = ns;
 
   return ns;
+};
+
+Context.prototype.expose = function(exposed){
+  this.nameSpace("core").expose(exposed);
 };
 
 

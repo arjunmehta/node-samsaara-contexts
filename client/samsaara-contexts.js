@@ -54,18 +54,18 @@ var samaaraContexts = function(options){
 
     return {
       execute: function execute(){
-        var packet = {context: context.id, ns: nameSpaceName, func: arguments[0], args: []};
+        var packet = {ns: nameSpaceName, func: arguments[0], args: []};
         packet = core.processPacket(packet, arguments);
-        core.send( packet, core.samsaaraOwner ); // should owner be "CTX" and work like routing works on client??? YES.
+        core.send( packet, core.samsaaraOwner, {CTX: context.id}); // should owner be "CTX" and work like routing works on client??? YES.
       }
     };
   };
 
   Context.prototype.execute = function(){
 
-    var packet = {context: this.id, func: arguments[0], args: []};
+    var packet = {func: arguments[0], args: []};
     packet = core.processPacket(packet, arguments);    
-    core.send( packet, core.samsaaraOwner );    
+    core.send( packet, core.samsaaraOwner, {CTX: this.id} );
   };
 
   Context.prototype.leave = function(callBack){
@@ -77,7 +77,6 @@ var samaaraContexts = function(options){
 
     samsaara = samsaaraCore.samsaara;
     attributes = samsaaraAttributes;
-
 
     var exported = {
       
