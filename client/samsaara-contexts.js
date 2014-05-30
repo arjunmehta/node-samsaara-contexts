@@ -23,17 +23,34 @@ var samaaraContexts = function(options){
   }
 
   function joinContext(contextID, callBack){
-    samsaara.nameSpace('samsaaraContextController').execute("addToContext", function(err, successContextID, contextOwner){
+    console.log("Joining Context", contextID);
+    samsaara.nameSpace('contextController').execute("joinContext", contextID, function(err, successContextID, contextOwner){
       if(err){
         contextDebug(new Error("Add to Context Error:", err));
+        if(typeof callBack === "function") callBack(new Error("Add to Context Error:", err), null);
       }
       else{
         createContext(successContextID, contextOwner);
-        samsaara.emit("addedToContext", successContextID);
-        if(typeof callBack === "function") callBack(err, successContextID);
+        samsaara.emit("joinedContext", contexts[successContextID]);
+        if(typeof callBack === "function") callBack(err, contexts[successContextID]);
       }
     });
   }
+
+  function leaveContext(contextID, callBack){
+    samsaara.nameSpace('contextController').execute("leaveContext", contextID, function(err, successContextID){
+      if(err){
+        contextDebug(new Error("Remove from Context Error:", err));
+        if(typeof callBack === "function") callBack(new Error("Add to Context Error:", err), null);
+      }
+      else{               
+        samsaara.emit("leftContext", contexts[successContextID]);
+        if(typeof callBack === "function") callBack(err, contexts[successContextID]);
+        delete contexts[successContextID]; 
+      }
+    });
+  }
+
 
 
   // private
@@ -56,7 +73,7 @@ var samaaraContexts = function(options){
       execute: function execute(){
         var packet = {ns: nameSpaceName, func: arguments[0], args: []};
         packet = core.processPacket(packet, arguments);
-        core.send( packet, core.samsaaraOwner, {CTX: context.id}); // should owner be "CTX" and work like routing works on client??? YES.
+        core.send( packet, "CTX:"+context.id);
       }
     };
   };
@@ -64,31 +81,36 @@ var samaaraContexts = function(options){
   Context.prototype.execute = function(){
 
     var packet = {func: arguments[0], args: []};
-    packet = core.processPacket(packet, arguments);    
-    core.send( packet, core.samsaaraOwner, {CTX: this.id} );
+    packet = core.processPacket(packet, arguments);
+    core.send( packet, "CTX:"+this.id);
   };
 
   Context.prototype.leave = function(callBack){
-    samsaara.nameSpace('samsaaraContextController').execute("leaveContext", callBack);
+    samsaara.nameSpace('contextController').execute("leaveContext", this.id,   callBack);
   };
 
 
   return function contexts(samsaaraCore, samsaaraAttributes){
 
+    console.log("DOES CORE SAMSAARA EXIST?", samsaaraCore);
+
+    core = samsaaraCore;
     samsaara = samsaaraCore.samsaara;
     attributes = samsaaraAttributes;
 
     var exported = {
       
-      internalMethods: {
-        updateToken: updateToken
+      internalMethods: {   
       },
-      initializationMethods: {
-        newConnectionAuthentication: newConnectionAuthentication
+      initializationMethods: {        
       },
-      messageRoutes: {
-        initToken: initToken
+      messageRoutes: {        
       },
+      main: {
+        joinContext: joinContext,
+        leaveContext: leaveContext,
+        context: context
+      }
 
     };
 
