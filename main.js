@@ -316,7 +316,7 @@ function contextController(options){
     var contextID = headerbits[1];
 
     if(contextID !== undefined && contexts[contextID] !== undefined){
-      communication.executeFunction({connection: connection, context: contexts[contextID]}, messageObj);
+      communication.executeFunction(connection, contexts[contextID], messageObj);
     }
   }
 
@@ -347,7 +347,7 @@ function contextController(options){
         }
 
         debug("EXECUTING CONTEXT METHOD", message, contextID, headerbits);
-        communication.executeFunction({connection: connection, context: contexts[contextID]}, messageObj); 
+        communication.executeFunction(connection, contexts[contextID], messageObj); 
       }
       
     }
@@ -384,7 +384,7 @@ function contextController(options){
 
       debug("Process Context Message", senderInfoSplit, connID, JSON.stringify(messageObj));
 
-      communication.executeFunction({connection: connection, context: context}, messageObj);
+      communication.executeFunction(connection, context, messageObj);
     }
   }
 
@@ -450,27 +450,27 @@ function contextController(options){
 
 
 
-  function joinContext(contextID, callBack){
-    addToContext(contextID, this.connection.id, function (err, contextID, connID){
+  function joinContext(connection, contextID, callBack){
+    addToContext(contextID, connection.id, function (err, contextID, connID){
       if(typeof callBack === "function") callBack(err, contextID, core.uuid);
     });
   }
 
-  function joinContextIPC(contextID, callBack){
-    addToContextIPC(contextID, this.connection.id, function (err, contextID, connID){
+  function joinContextIPC(connection, contextID, callBack){
+    addToContextIPC(contextID, connection.id, function (err, contextID, connID){
       console.log("Circular Structure?",err, contextID, connID);
       if(typeof callBack === "function") callBack(err, contextID, core.uuid);
     });
   }
 
-  function leaveContext(contextID, callBack){
-    removeFromContext(contextID, this.connection.id, function (err, success){
+  function leaveContext(connection, contextID, callBack){
+    removeFromContext(contextID, connection.id, function (err, success){
       if(typeof callBack === "function") callBack(err, success);
     });
   }
 
-  function leaveContextIPC(contextID, callBack){
-    removeFromContextIPC(contextID, this.connection.id, function (err, success){
+  function leaveContextIPC(connection, contextID, callBack){
+    removeFromContextIPC(contextID, connection.id, function (err, success){
       if(typeof callBack === "function") callBack(err, success);
     });
   }

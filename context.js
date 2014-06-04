@@ -26,7 +26,7 @@ function initialize(samsaaraCore, contextsObj, contextControllerObj){
   contexts = contextsObj;
   contextController = contextControllerObj;
 
-  if(samsaaraCore.capability.groups === true){
+  if(core.capability.groups === true){
 
     Context.prototype.createGroup = function(groupName){
       samsaara.createLocalGroup(this.contextID+"_"+groupName);
@@ -38,18 +38,25 @@ function initialize(samsaaraCore, contextsObj, contextControllerObj){
     };
   }
 
+  if(core.capability.resources === true){
+
+    Context.prototype.addResource = function(resource, name){
+      this.resources[name] = new samsaara.Resource(resource, name);
+      this.resources[name].context = this;
+    };
+  }
+
+
   return Context;
 }
 
 
-function Context(contextID, resource, parentContextID){
+function Context(contextID, parentContextID){
 
   this.id = contextID;
 
   this.owner = core.uuid;
   this.parentContextID = parentContextID || "root" ;
-
-  this.resource = resource;
 
   this.nameSpaces = {};
   this.nameSpaces.core = samsaara.createNamespace(contextID+"_core");
@@ -62,6 +69,11 @@ function Context(contextID, resource, parentContextID){
     this.groups = {};
   }
 }
+
+
+Context.prototype.resource = function(resourceName){
+  return this.resources[resourceName];
+};
 
 
 // returns whether or not the context is local on this process or not (opposed to symboliccontext.js)
