@@ -29,8 +29,8 @@ function initialize(samsaaraCore, contextsObj, contextControllerObj){
   if(core.capability.groups === true){
 
     Context.prototype.createGroup = function(groupName){
-      samsaara.createLocalGroup(this.contextID+"_"+groupName);
-      this.groups[groupName] = samsaara.groups[this.contextID+"_"+groupName];
+      samsaara.createLocalGroup(this.id+"_"+groupName);
+      this.groups[groupName] = samsaara.groups[this.id+"_"+groupName];
     };
 
     Context.prototype.group = function(groupName){
@@ -40,9 +40,17 @@ function initialize(samsaaraCore, contextsObj, contextControllerObj){
 
   if(core.capability.resources === true){
 
-    Context.prototype.addResource = function(resource, name){
-      this.resources[name] = new samsaara.Resource(resource, name);
-      this.resources[name].context = this;
+    Context.prototype.createResource = function(resourceID, resource, autoExpose, callBack){
+
+      samsaara.createResource(this.id+"_"+resourceID, resource, autoExpose, function(err, resource){
+        if(!err){
+          this.resources[this.id+"_"+resourceID].context = this;
+          if(typeof callBack === "function") callBack(err, resource);          
+        }
+        else{
+          if(typeof callBack === "function") callBack(err, resource);  
+        }
+      });
     };
   }
 
@@ -122,7 +130,7 @@ Context.prototype.removeContext = function(contextID){
 // creates a namespace on the context that holds methods accessible to clients in the context
 
 Context.prototype.createNamespace = function(nameSpaceName, exposed){
-  var ns = samsaara.createNamespace(this.contextID+"_"+nameSpaceName, exposed);
+  var ns = samsaara.createNamespace(this.id+"_"+nameSpaceName, exposed);
   this.nameSpaces[nameSpaceName] = ns;
 
   return ns;

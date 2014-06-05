@@ -13,8 +13,6 @@ var debug = require('debug')('samsaara:contexts');
 var debugError = require('debug')('samsaara:contexts:error');
 
 
-function contextController(options){
-
   var core,
       samsaara,
       connectionController,
@@ -29,351 +27,415 @@ function contextController(options){
   var Context;
 
 
-  //
-  // main
-  //
+// the root interface loaded by require. Options are pass in options here.
 
-  // is the context with this ID open, locally or remotely?
+function main(opts){
+  return initialize;
+}
 
-  function isContextOpen(contextID, callBack){
-    if(contexts[contextID] !== undefined){
-      if(typeof callBack === "function") callBack(true, "local");
-    }
-    else{
-      if(typeof callBack === "function") callBack(false, null);
-    }
+
+// samsaara will call this method when it's ready to load it into its middleware stack
+// return your main
+
+function initialize(samsaaraCore){
+
+  core = samsaaraCore;
+  samsaara = samsaaraCore.samsaara;
+  connectionController = samsaaraCore.connectionController;
+  communication = samsaaraCore.communication;
+  ipc = samsaaraCore.ipc;
+  connections = connectionController.connections;
+
+  interProcess = samsaaraCore.capability.ipc;
+
+  samsaaraCore.addClientFileRoute("samsaara-contexts.js", __dirname + '/client/samsaara-contexts.js');
+
+  var contextController = {
+    name: "contexts",
+    clientScript: __dirname + '/client/samsaara-contexts.js',
+    main: {
+      context: context,
+      isContextOpen: isContextOpen,
+      createContext: createContext,
+      addToContext: addToContext,
+      removeFromContext: removeFromContext,
+      contexts: contexts
+    },
+    remoteMethods: {},
+    messageRoutes: {
+      CTX: route
+    },
+    connectionInitialization: {
+      contexts: connectionInitialzation
+    },
+    connectionClose: {
+      contexts: connectionClosing
+    },
+    constructors: {},
+    testable: {}
+  };
+
+
+  if(interProcess === true){
+
+    contextController.main.context = contextIPC;
+    contextController.main.createContext = createContextIPC;
+    contextController.main.isContextOpen = isContextOpenIPC;
+    contextController.main.removeContext = removeContextIPC;
+    contextController.main.addToContext = addToContextIPC;
+    contextController.main.removeFromContext = removeFromContextIPC;
+
+    contextController.messageRoutes.CTX = routeIPC;
+
+    contextController.remoteMethods.joinContext = joinContextIPC;
+    contextController.remoteMethods.leaveContext = leaveContextIPC;
+
+    samsaara.nameSpace("interprocess").expose({
+      removeContext: removeContextIPC,
+      addToContext: addToContextIPC,
+      removeFromContext: removeFromContextIPC
+    });
+
+    ipc.use({
+      symbolicConnectionInitialization: symbolicConnectionInitialization,
+      symbolicConnectionClosing: symbolicConnectionClosing
+    });
+
+    samsaara.createNamespace("contextController", {
+      joinContext: joinContextIPC,
+      leaveContext: leaveContextIPC
+    });
+
+  }
+  else{
+    samsaara.createNamespace("contextController", {
+      joinContext: joinContext,
+      leaveContext: leaveContext
+    });
   }
 
-  function isContextOpenIPC(contextID, callBack){
+  Context = require('./context').initialize(samsaaraCore, contexts, contextController.main);
 
-    if(contexts[contextID] === undefined){
+  contextController.constructors.Context = Context;
 
-      ipc.store.pubsub("NUMSUB", "CTX:"+contextID, function (err, reply){
-        if(~~reply[1] === 0){
-          if(typeof callBack === "function") callBack(false, null);
-        }
-        else{
-          if(typeof callBack === "function") callBack(true, "remote");
-        }
-      });
-    }
-    else{
-      if(typeof callBack === "function") callBack(true, "local");
-    }
+  return contextController;
+}
+
+
+
+
+//
+// main
+//
+
+// is the context with this ID open, locally or remotely?
+
+function isContextOpen(contextID, callBack){
+  if(contexts[contextID] !== undefined){
+    if(typeof callBack === "function") callBack(true, "local");
   }
-
-
-  // Context creation and removal
-
-  // Context IDs must be unique, globally, including subcontext
-  // what happens if in IPC two people create a context with the same ID at the exact same time?
-
-  function createContext(contextID, resource, parentContext, callBack){
-
-    if(typeof parentContext === "function"){
-      callBack = parentContext;
-      parentContext = undefined;
-    }
-
-    debug("Creating Context", core.uuid, contextID, resource, parentContext);
-
-    // is context already open?
-
-    if(contexts[contextID] === undefined){
-
-      contexts[contextID] = new Context(contextID, resource, parentContext);
-      samsaara.emit("createdContext", contexts[contextID]);
-
-      if(typeof callBack === "function") callBack(null, contexts[contextID]);
-    }
-    else{
-      if(typeof callBack === "function") callBack(new Error("Context already exists"), undefined);
-    }
+  else{
+    if(typeof callBack === "function") callBack(false, null);
   }
+}
 
+function isContextOpenIPC(contextID, callBack){
 
-  function createContextIPC(contextID, resource, parentContext, callBack){
+  if(contexts[contextID] === undefined){
 
-    if(typeof parentContext === "function"){
-      callBack = parentContext;
-      parentContext = undefined;
-    }
-
-    // is context already open?
-
-    debug("Creating Context IPC", core.uuid, contextID, resource, parentContext);
-
-    if(contexts[contextID] === undefined){
-
-      ipc.store.pubsub("NUMSUB", "CTX:"+contextID, function (err, reply){
-
-        if(~~reply[1] === 0){
-
-          contexts[contextID] = new Context(contextID, resource, parentContext);
-
-          ipc.addRoute("CTX:"+contextID, "CTX:"+contextID, handleContextMessage);
-
-          ipc.store.hset("samsaara:contextOwners", contextID, core.uuid, function (err, reply){
-            samsaara.emit("createdContext", contexts[contextID]);
-            if(typeof callBack === "function") callBack(null, contexts[contextID], "local");
-          });
-
-        }
-        else{
-          if(typeof callBack === "function") callBack(new Error("Context already exists"), undefined, "remote");
-        }
-      });
-    }
-    else{
-      if(typeof callBack === "function") callBack(new Error("Context already exists"), undefined, "local");
-    }
-  }
-
-
-  function removeContext(contextID, callBack){
-    delete contexts[contextID];
-    if(typeof callBack === "function") callBack(err, true);
-  }
-
-  function removeContextIPC(contextID, callBack){
-    if(contexts[contextID] !== undefined){
-
-      ipc.removeRoute("CTX:"+contextID);
-
-      ipc.store.hdel("samsaara:contextOwners", contextID, function (err, ownerID){
-        samsaara.emit("removedContext", contexts[contextID]);
-        delete contexts[contextID];
-        if(typeof callBack === "function") callBack(err, true);
-      });
-
-    }
-    else{
-
-      ipc.store.hget("samsaara:contextOwners", contextID, function (err, ownerID){
-
-        if(ownerID !== null){
-          ipc.process(ownerID).execute("removeContext", contextID, function (err, success){
-            if(err){
-              if(typeof callBack === "function") callBack(err, false);
-            }
-            else{
-              if(typeof callBack === "function") callBack(err, true);
-            }
-          });
-        }
-        else{
-          if(typeof callBack === "function") callBack(err, false);
-        }
-      });
-    }
-  }
-
-  function handleDeleteContext(channel, contextID){
-    delete contexts[contextID];
-  }
-
-
-
-
-  // context generator
-
-  function context(contextID){
-    return contexts[contextID];
-  }
-
-  function contextIPC(contextID){
-    if(contexts[contextID] !== undefined){
-      return contexts[contextID];
-    }
-    else{
-      return {
-
-        local: false,
-
-        add: function(connection, callBack){
-          ipc.store.hget("samsaara:contextOwners", contextID, function (err, ownerID){
-            ipc.process(ownerID).execute("addToContext", contextID, connection.id, callBack);
-          });
-        },
-        remove: function(connection, callBack){
-          ipc.store.hget("samsaara:contextOwners", contextID, function (err, ownerID){
-            ipc.process(ownerID).execute("removeFromContext", contextID, connection.id, callBack);
-          });
-        }
-      };
-    }
-  }
-
-
-
-  // Add connection to context
-
-  function addToContext(contextID, connID, callBack){
-
-    if(contexts[contextID] !== undefined){
-      // context exists
-      var context = contexts[contextID];
-
-      if(connections[connID] !== undefined){
-        // connection (real) is here
-
-        addConnectionToContext(contexts[contextID], connID);
-        if(typeof callBack === "function") callBack(null, contextID, connID);
+    ipc.store.pubsub("NUMSUB", "CTX:"+contextID, function (err, reply){
+      if(~~reply[1] === 0){
+        if(typeof callBack === "function") callBack(false, null);
       }
       else{
-        // connection is not here, not much we can do.
-        if(typeof callBack === "function") callBack(new Error("Connection does not exist"), contextID, connID);
+        if(typeof callBack === "function") callBack(true, "remote");
       }
-    }
-    else{
-      // context doesn't exist.
-      if(typeof callBack === "function") callBack(new Error("Context does not exist"), contextID, connID);
-    }
+    });
+  }
+  else{
+    if(typeof callBack === "function") callBack(true, "local");
+  }
+}
+
+
+// Context creation and removal
+
+// Context IDs must be unique, globally, including subcontext
+// what happens if in IPC two people create a context with the same ID at the exact same time?
+
+function createContext(contextID, parentContext, callBack){
+
+  if(typeof parentContext === "function"){
+    callBack = parentContext;
+    parentContext = undefined;
   }
 
+  debug("Creating Context", core.uuid, contextID, parentContext);
+
+  // is context already open?
+
+  if(contexts[contextID] === undefined){
+
+    contexts[contextID] = new Context(contextID, parentContext);
+    samsaara.emit("createdContext", contexts[contextID]);
+
+    if(typeof callBack === "function") callBack(null, contexts[contextID]);
+  }
+  else{
+    if(typeof callBack === "function") callBack(new Error("Context already exists"), undefined);
+  }
+}
 
 
-  function addToContextIPC(contextID, connID, callBack){
+function createContextIPC(contextID, parentContext, callBack){
 
-    if(contexts[contextID] !== undefined){
-      // context exists
-      var context = contexts[contextID];
+  if(typeof parentContext === "function"){
+    callBack = parentContext;
+    parentContext = undefined;
+  }
 
-      if(connections[connID] !== undefined){
-        // connection (real or symbolic) is here
-        addConnectionToContext(contexts[contextID], connID);
-        if(typeof callBack === "function") callBack(null, contextID, connID);
+  // is context already open?
+
+  debug("Creating Context IPC", core.uuid, contextID, parentContext);
+
+  if(contexts[contextID] === undefined){
+
+    ipc.store.pubsub("NUMSUB", "CTX:"+contextID, function (err, reply){
+
+      if(~~reply[1] === 0){
+
+        contexts[contextID] = new Context(contextID, parentContext);
+
+        ipc.addRoute("CTX:"+contextID, "CTX:"+contextID, handleContextMessage);
+
+        ipc.store.hset("samsaara:contextOwners", contextID, core.uuid, function (err, reply){
+          samsaara.emit("createdContext", contexts[contextID]);
+          if(typeof callBack === "function") callBack(null, contexts[contextID], "local");
+        });
+
       }
       else{
-        // connection is not here, so we need to create a symbolic connection
-        ipc.generateSymbolic(connID, function (err, symbolicConnection){
-          if(err !== null){
-            debugError("Generate Symbolic for Context Error:", err, contextID, connID);
-            if(typeof callBack === "function") callBack(err, contextID, connID);
+        if(typeof callBack === "function") callBack(new Error("Context already exists"), undefined, "remote");
+      }
+    });
+  }
+  else{
+    if(typeof callBack === "function") callBack(new Error("Context already exists"), undefined, "local");
+  }
+}
+
+
+function removeContext(contextID, callBack){
+  delete contexts[contextID];
+  if(typeof callBack === "function") callBack(err, true);
+}
+
+function removeContextIPC(contextID, callBack){
+  if(contexts[contextID] !== undefined){
+
+    ipc.removeRoute("CTX:"+contextID);
+
+    ipc.store.hdel("samsaara:contextOwners", contextID, function (err, ownerID){
+      samsaara.emit("removedContext", contexts[contextID]);
+      delete contexts[contextID];
+      if(typeof callBack === "function") callBack(err, true);
+    });
+
+  }
+  else{
+
+    ipc.store.hget("samsaara:contextOwners", contextID, function (err, ownerID){
+
+      if(ownerID !== null){
+        ipc.process(ownerID).execute("removeContext", contextID, function (err, success){
+          if(err){
+            if(typeof callBack === "function") callBack(err, false);
           }
           else{
-            addConnectionToContext(contexts[contextID], connID);
-            if(typeof callBack === "function") callBack(null, contextID, connID);
+            if(typeof callBack === "function") callBack(err, true);
           }
         });
       }
-    }
-    else{
-      if(typeof callBack === "function") callBack(new Error("Context does not exist"), contextID, connID);
-    }
+      else{
+        if(typeof callBack === "function") callBack(err, false);
+      }
+    });
   }
+}
+
+function handleDeleteContext(channel, contextID){
+  delete contexts[contextID];
+}
 
 
-  function addConnectionToContext(context, connID){
-    if(!context.members[connID]){
-      context.count++;
-      context.members[connID] = true;
-      return true;
-    }
-    else{
-      return false;
-    }
+
+
+// context generator
+
+function context(contextID){
+  return contexts[contextID];
+}
+
+function contextIPC(contextID){
+  if(contexts[contextID] !== undefined){
+    return contexts[contextID];
   }
+  else{
+    return {
+
+      local: false,
+
+      add: function(connection, callBack){
+        ipc.store.hget("samsaara:contextOwners", contextID, function (err, ownerID){
+          ipc.process(ownerID).execute("addToContext", contextID, connection.id, callBack);
+        });
+      },
+      remove: function(connection, callBack){
+        ipc.store.hget("samsaara:contextOwners", contextID, function (err, ownerID){
+          ipc.process(ownerID).execute("removeFromContext", contextID, connection.id, callBack);
+        });
+      }
+    };
+  }
+}
 
 
 
-  // remove connection from context
+// Add connection to context
 
+function addToContext(contextID, connID, callBack){
 
-  function removeFromContext(contextID, connID, callBack){
-    if(contexts[contextID] !== undefined){
-      removeConnectionFromContext(contexts[contextID], connID);
+  if(contexts[contextID] !== undefined){
+    // context exists
+    var context = contexts[contextID];
+
+    if(connections[connID] !== undefined){
+      // connection (real) is here
+
+      addConnectionToContext(contexts[contextID], connID);
       if(typeof callBack === "function") callBack(null, contextID, connID);
     }
     else{
-      if(typeof callBack === "function") callBack("Context does not exist", contextID, connID);
+      // connection is not here, not much we can do.
+      if(typeof callBack === "function") callBack(new Error("Connection does not exist"), contextID, connID);
     }
   }
+  else{
+    // context doesn't exist.
+    if(typeof callBack === "function") callBack(new Error("Context does not exist"), contextID, connID);
+  }
+}
 
-  function removeFromContextIPC(contextID, connID, callBack){
-    if(contexts[contextID] !== undefined){
-      removeConnectionFromContext(contexts[contextID], connID);
-      if(typeof callBack === "function") callBack(null, true);
+
+
+function addToContextIPC(contextID, connID, callBack){
+
+
+  debug("adding connection to contect", contextID, connID);
+
+  if(contexts[contextID] !== undefined){
+    // context exists
+    var context = contexts[contextID];
+
+    if(connections[connID] !== undefined){
+      // connection (real or symbolic) is here
+      addConnectionToContext(contexts[contextID], connID);
+      if(typeof callBack === "function") callBack(null, contextID, connID);
     }
     else{
-      ipc.process(contexts[contextID].owner).execute("removeFromContext", contextID, connID, callBack);
-    }
-  }
-
-  function removeConnectionFromContext(context, connID){
-    if(context.members[connID]){
-      context.count--;
-      delete context.members[connID];
-    }
-  }
-
-
-
-  // Routing Methods including IPC handling
-
-  function route(connection, headerbits, message){
-
-    var contextID = headerbits[1];
-
-    if(contextID !== undefined && contexts[contextID] !== undefined){
-      communication.executeFunction(connection, contexts[contextID], messageObj);
-    }
-  }
-
-
-
-  function routeIPC(connection, headerbits, message){
-
-    var contextID = headerbits[1];
-
-    if(contexts[contextID] === undefined){
-      ipc.store.hget("samsaara:contextOwners", contextID, function (err, ownerID){
-        if(ownerID !== null){
-          ipc.publish("PRC:"+ownerID+":CTXFWD", "CTX:"+contextID+":FRM:"+connection.id+"::"+message);
+      // connection is not here, so we need to create a symbolic connection
+      ipc.generateSymbolic(connID, function (err, symbolicConnection){
+        if(err !== null){
+          debugError("Generate Symbolic for Context Error:", err, contextID, connID);
+          if(typeof callBack === "function") callBack(err, contextID, connID);
+        }
+        else{
+          addConnectionToContext(contexts[contextID], connID);
+          if(typeof callBack === "function") callBack(null, contextID, connID);
         }
       });
     }
-    else{
-      var messageObj = parseJSON(message);
-      if(messageObj !== undefined){
-
-        messageObj.sender = connection.id;
-
-        if(messageObj.ns){
-          messageObj.ns = contextID + "_" + messageObj.ns;
-        }
-        else{
-          messageObj.ns = contextID + "_core";
-        }
-
-        debug("EXECUTING CONTEXT METHOD", message, contextID, headerbits);
-        communication.executeFunction(connection, contexts[contextID], messageObj); 
-      }
-      
-    }
   }
+  else{
+    if(typeof callBack === "function") callBack(new Error("Context does not exist"), contextID, connID);
+  }
+}
+
+
+function addConnectionToContext(context, connID){
+  if(!context.members[connID]){
+    context.count++;
+    context.members[connID] = true;
+    return true;
+  }
+  else{
+    return false;
+  }
+}
 
 
 
-  // double parsing (header and body)... can we combine them somehow?
+// remove connection from context
 
-  function handleContextMessage(channel, message){
 
-    debug("Handling Context Message", core.uuid, channel, message);
+function removeFromContext(contextID, connID, callBack){
+  if(contexts[contextID] !== undefined){
+    removeConnectionFromContext(contexts[contextID], connID);
+    if(typeof callBack === "function") callBack(null, contextID, connID);
+  }
+  else{
+    if(typeof callBack === "function") callBack("Context does not exist", contextID, connID);
+  }
+}
 
-    var index = message.indexOf("::");
-    var senderInfoSplit = message.split(":");
-    var connMessage = message.slice(2+index-message.length);
+function removeFromContextIPC(contextID, connID, callBack){
+  if(contexts[contextID] !== undefined){
+    removeConnectionFromContext(contexts[contextID], connID);
+    if(typeof callBack === "function") callBack(null, true);
+  }
+  else{
+    ipc.process(contexts[contextID].owner).execute("removeFromContext", contextID, connID, callBack);
+  }
+}
 
-    var contextID = senderInfoSplit[1];
-    var connID = senderInfoSplit[3];
+function removeConnectionFromContext(context, connID){
+  if(context.members[connID]){
+    context.count--;
+    delete context.members[connID];
+  }
+}
 
-    var connection = connections[connID] || {id: connID};
-    var context = contexts[contextID];
 
-    if(context !== undefined){
 
-      var messageObj = JSON.parse(connMessage);
+// Routing Methods including IPC handling
+
+function route(connection, headerbits, message){
+
+  var contextID = headerbits[1];
+
+  if(contextID !== undefined && contexts[contextID] !== undefined){
+    communication.executeFunction(connection, contexts[contextID], messageObj);
+  }
+}
+
+
+
+function routeIPC(connection, headerbits, message){
+
+  var contextID = headerbits[1];
+
+  if(contexts[contextID] === undefined){
+    ipc.store.hget("samsaara:contextOwners", contextID, function (err, ownerID){
+      if(ownerID !== null){
+        ipc.publish("PRC:"+ownerID+":CTXFWD", "CTX:"+contextID+":FRM:"+connection.id+"::"+message);
+      }
+    });
+  }
+  else{
+    var messageObj = parseJSON(message);
+    if(messageObj !== undefined){
+
+      messageObj.sender = connection.id;
 
       if(messageObj.ns){
         messageObj.ns = contextID + "_" + messageObj.ns;
@@ -382,207 +444,132 @@ function contextController(options){
         messageObj.ns = contextID + "_core";
       }
 
-      debug("Process Context Message", senderInfoSplit, connID, JSON.stringify(messageObj));
-
-      communication.executeFunction(connection, context, messageObj);
+      debug("EXECUTING CONTEXT METHOD", message, contextID, headerbits);
+      communication.executeFunction(connection, contexts[contextID], messageObj); 
     }
+    
   }
+}
 
 
 
+// double parsing (header and body)... can we combine them somehow?
 
-  // connection initialization
+function handleContextMessage(channel, message){
 
-  function connectionInitialzation(opts, connection, attributes){
+  debug("Handling Context Message", core.uuid, channel, message);
 
-    connection.contexts = {};
+  var index = message.indexOf("::");
+  var senderInfoSplit = message.split(":");
+  var connMessage = message.slice(2+index-message.length);
 
-    if(opts.contexts !== undefined){
-      debug("Initializing Contexts.....!!!", opts.contexts, connection.id);
-      attributes.force("contexts");
-      attributes.initialized(null, "contexts");
-    }
-  }
+  var contextID = senderInfoSplit[1];
+  var connID = senderInfoSplit[3];
 
+  var connection = connections[connID] || {id: connID};
+  var context = contexts[contextID];
 
-  // connection closing
+  if(context !== undefined){
 
-  function connectionClosing(connection){
-    var connID = connection.id;
-    var connContexts = connection.contexts;
+    var messageObj = JSON.parse(connMessage);
 
-    for(var contextID in connContexts){
-      var context = contexts[connContexts[contextID]];
-      if(context !== undefined){
-        removeConnectionFromContext(context, connID);
-      }
-    }
-  }
-
-
-
-
-
-
-  // symbolic connection initialization
-
-  function symbolicConnectionInitialization(symbolicConnection){
-    symbolicConnection.contexts = {};
-  }
-
-
-  // symbolic connection closing
-
-  function symbolicConnectionClosing(symbolicConnection){
-    var connID = symbolicConnection.id;
-    var connContexts = symbolicConnection.contexts;
-
-    for(var contextID in connContexts){
-      var context = contexts[connContexts[contextID]];
-      if(context !== undefined){
-        removeConnectionFromContext(context, connID);
-      }
-    }
-  }
-
-
-
-
-
-
-  function joinContext(connection, contextID, callBack){
-    addToContext(contextID, connection.id, function (err, contextID, connID){
-      if(typeof callBack === "function") callBack(err, contextID, core.uuid);
-    });
-  }
-
-  function joinContextIPC(connection, contextID, callBack){
-    addToContextIPC(contextID, connection.id, function (err, contextID, connID){
-      console.log("Circular Structure?",err, contextID, connID);
-      if(typeof callBack === "function") callBack(err, contextID, core.uuid);
-    });
-  }
-
-  function leaveContext(connection, contextID, callBack){
-    removeFromContext(contextID, connection.id, function (err, success){
-      if(typeof callBack === "function") callBack(err, success);
-    });
-  }
-
-  function leaveContextIPC(connection, contextID, callBack){
-    removeFromContextIPC(contextID, connection.id, function (err, success){
-      if(typeof callBack === "function") callBack(err, success);
-    });
-  }
-
-
-
-
-
-
-  //
-  // Module Return Function.
-  // Within this function you should set up and return your samsaara middleWare exported
-  // object. Your eported object can contain:
-  // name, foundation, remoteMethods, connectionInitialization, connectionClose
-  //
-
-  return function contextController(samsaaraCore){
-
-    core = samsaaraCore;
-    samsaara = samsaaraCore.samsaara;
-    connectionController = samsaaraCore.connectionController;
-    communication = samsaaraCore.communication;
-    ipc = samsaaraCore.ipc;
-    connections = connectionController.connections;
-
-    interProcess = samsaaraCore.capability.ipc;
-
-    samsaaraCore.addClientFileRoute("samsaara-contexts.js", __dirname + '/client/samsaara-contexts.js');
-
-    var exported = {
-
-      name: "contexts",
-
-      clientScript: __dirname + '/client/samsaara-contexts.js',
-
-      main: {
-        context: context,
-        isContextOpen: isContextOpen,
-        createContext: createContext,
-        addToContext: addToContext,
-        removeFromContext: removeFromContext,
-        contexts: contexts
-      },
-
-      remoteMethods: {},
-
-      messageRoutes: {
-        CTX: route
-      },
-
-      connectionInitialization: {
-        contexts: connectionInitialzation
-      },
-
-      connectionClose: {
-        contexts: connectionClosing
-      },
-
-      constructors: {},
-
-      testable: {}
-
-    };
-
-
-    if(interProcess === true){
-
-      exported.main.context = contextIPC;
-      exported.main.createContext = createContextIPC;
-      exported.main.isContextOpen = isContextOpenIPC;
-      exported.main.removeContext = removeContextIPC;
-      exported.main.addToContext = addToContextIPC;
-      exported.main.removeFromContext = removeFromContextIPC;
-
-      exported.messageRoutes.CTX = routeIPC;
-
-      exported.remoteMethods.joinContext = joinContextIPC;
-      exported.remoteMethods.leaveContext = leaveContextIPC;
-
-      samsaara.nameSpace("interprocess").expose({
-        removeContext: removeContextIPC,
-        addToContext: addToContextIPC,
-        removeFromContext: removeFromContextIPC
-      });
-
-      ipc.use({
-        symbolicConnectionInitialization: symbolicConnectionInitialization,
-        symbolicConnectionClosing: symbolicConnectionClosing
-      });
-
-      samsaara.createNamespace("contextController", {
-        joinContext: joinContextIPC,
-        leaveContext: leaveContextIPC
-      });
-
+    if(messageObj.ns){
+      messageObj.ns = contextID + "_" + messageObj.ns;
     }
     else{
-      samsaara.createNamespace("contextController", {
-        joinContext: joinContext,
-        leaveContext: leaveContext
-      });
+      messageObj.ns = contextID + "_core";
     }
 
-    Context = require('./context').initialize(samsaaraCore, contexts, exported.main);
+    debug("Process Context Message", senderInfoSplit, connID, JSON.stringify(messageObj));
 
-    exported.constructors.Context = Context;
-
-
-    return exported;
-
-  };
+    communication.executeFunction(connection, context, messageObj);
+  }
 }
+
+
+
+
+// connection initialization
+
+function connectionInitialzation(opts, connection, attributes){
+
+  connection.contexts = {};
+
+  if(opts.contexts !== undefined){
+    debug("Initializing Contexts.....!!!", opts.contexts, connection.id);
+    attributes.force("contexts");
+    attributes.initialized(null, "contexts");
+  }
+}
+
+
+// connection closing
+
+function connectionClosing(connection){
+  var connID = connection.id;
+  var connContexts = connection.contexts;
+
+  for(var contextID in connContexts){
+    var context = contexts[connContexts[contextID]];
+    if(context !== undefined){
+      removeConnectionFromContext(context, connID);
+    }
+  }
+}
+
+
+
+
+
+
+// symbolic connection initialization
+
+function symbolicConnectionInitialization(symbolicConnection){
+  symbolicConnection.contexts = {};
+}
+
+
+// symbolic connection closing
+
+function symbolicConnectionClosing(symbolicConnection){
+  var connID = symbolicConnection.id;
+  var connContexts = symbolicConnection.contexts;
+
+  for(var contextID in connContexts){
+    var context = contexts[connContexts[contextID]];
+    if(context !== undefined){
+      removeConnectionFromContext(context, connID);
+    }
+  }
+}
+
+
+
+function joinContext(connection, contextID, callBack){
+  addToContext(contextID, connection.id, function (err, contextID, connID){
+    if(typeof callBack === "function") callBack(err, contextID, core.uuid);
+  });
+}
+
+function joinContextIPC(connection, contextID, callBack){
+  addToContextIPC(contextID, connection.id, function (err, contextID, connID){
+    console.log("Circular Structure?", err, contextID, connID);
+    if(typeof callBack === "function") callBack(err, contextID, core.uuid);
+  });
+}
+
+function leaveContext(connection, contextID, callBack){
+  removeFromContext(contextID, connection.id, function (err, success){
+    if(typeof callBack === "function") callBack(err, success);
+  });
+}
+
+function leaveContextIPC(connection, contextID, callBack){
+  removeFromContextIPC(contextID, connection.id, function (err, success){
+    if(typeof callBack === "function") callBack(err, success);
+  });
+}
+
 
 
 
@@ -600,4 +587,4 @@ function parseJSON(jsonString){
 }
 
 
-module.exports = exports = contextController;
+module.exports = exports = main;
