@@ -92,8 +92,6 @@ var samaaraContexts = function(options){
 
   return function contexts(samsaaraCore, samsaaraAttributes){
 
-    console.log("DOES CORE SAMSAARA EXIST?", samsaaraCore);
-
     core = samsaaraCore;
     samsaara = samsaaraCore.samsaara;
     attributes = samsaaraAttributes;

@@ -38,6 +38,7 @@ function initialize(samsaaraCore, contextsObj, contextControllerObj){
     };
   }
 
+
   if(core.capability.resources === true){
 
     Context.prototype.createResource = function(resourceID, resource, autoExpose, callBack){
@@ -92,15 +93,13 @@ Context.prototype.local = true;
 // add and remove connections
 // might need to think about foreign connections a tad... you think?
 
-Context.prototype.add = function(connection, callBack){
-  // connection.contexts[this.id] = core.uuid;
-  contextController.addToContext(this.id, connection.id, callBack);
+Context.prototype.add = function(connection){
+  contextController.addConnectionToContext(this, connection.id);
 };
 
 
-Context.prototype.remove = function(connection, callBack){
-  // connection.contexts[this.id] = undefined;
-  contextController.removeFromContext(this.id, connection.id, callBack);
+Context.prototype.remove = function(connection){
+  contextController.removeConnectionFromContext(this, connection.id);
 };
 
 
@@ -135,6 +134,7 @@ Context.prototype.createNamespace = function(nameSpaceName, exposed){
 
   return ns;
 };
+
 
 Context.prototype.expose = function(exposed){
   this.nameSpace("core").expose(exposed);
